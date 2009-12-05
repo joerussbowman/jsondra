@@ -81,11 +81,11 @@ class MainHandler(tornado.web.RequestHandler):
 
 class GetRecordHandler(JsondraRequestHandler):
     """ Handler used for getting records. Returns 404 on keys not found. """
-    def get(self):
+    def _process_request(self):
         self._check_args()
-        
+
         connection.add_pool(self.keyspace, self.settings.get('cassandra_pool'))
-        
+
         k = Key(self.keyspace, self.columnfamily, self.key)
         r = record.Record()
         try:
@@ -95,10 +95,15 @@ class GetRecordHandler(JsondraRequestHandler):
             # key not found, throw 404
             raise tornado.web.HTTPError(404)
 
+    def get(self):
+        self._process_request()
+
+    def post(self):
+        self._process_request()
 
 class PutRecordHandler(JsondraRequestHandler):
     """ Handler used for adding records. """
-    def get(self):
+    def _process_request(self):
         self._check_args()
         
         connection.add_pool(self.keyspace, self.settings.get('cassandra_pool'))
@@ -131,9 +136,15 @@ class PutRecordHandler(JsondraRequestHandler):
             r.save()
             self.write(tornado.escape.json_encode(r))
 
+    def get(self):
+        self._process_request()
+
+    def post(self):
+        self._process_request()
+
 class DeleteRecordHandler(JsondraRequestHandler):
     """ Handler used for deleting records. """
-    def get(self):
+    def _process_request(self):
         self._check_args()
         
         k = Key(self.keyspace, self.columnfamily, self.key)
@@ -144,6 +155,12 @@ class DeleteRecordHandler(JsondraRequestHandler):
             self.write('{"deleteItem": "success"}')
         except:
             raise tornado.web.HTTPError(404, "key not found")
+
+    def get(self):
+        self._process_request()
+
+    def post(self):
+        self._process_request()
 
 def main():
     tornado.options.parse_command_line()
