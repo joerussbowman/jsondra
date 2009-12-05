@@ -17,8 +17,6 @@
 __author__="jbowman"
 __date__ ="$Dec 5, 2009 11:10:21 AM$"
 
-import logging
-import datetime
 import os.path
 import tornado.escape
 import tornado.httpserver
@@ -134,6 +132,7 @@ class PutRecordHandler(JsondraRequestHandler):
             self.write(tornado.escape.json_encode(r))
 
 class DeleteRecordHandler(JsondraRequestHandler):
+    """ Handler used for deleting records. """
     def get(self):
         self._check_args()
         
