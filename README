@@ -1,0 +1,28 @@
+Jsondra is an http and json interface for the Cassandra project.
+
+It is written in python using the tornado framework released by Facebook,
+and uses the lazyboy project as released by Digg for interacting with Cassandra.
+
+The 3 URI's to access it are
+
+http://[host][port]/record/get/
+http://[host][port]/record/put/
+http://[host][port]/record/delete/
+
+It expects the following arguments via GET or POST
+
+ks = keyspace
+cf = column family
+k = key
+v (optional) = value for put operation
+
+Usage example:
+
+Adding an item with a GET request:
+    http://localhost:8001/record/put/?ks=UserData&cf=Users&k=1&v={"name": "joe"}
+
+Getting an item with a GET request:
+    http://localhost:8001/record/get/?ks=UserData&cf=Users&k=1
+
+Deleting an item with a GET request:
+    http://localhost:8001/record/delete/?ks=UserData&cf=Users&k=1
