@@ -26,3 +26,66 @@ Getting an item with a GET request:
 
 Deleting an item with a GET request:
     http://localhost:8001/record/delete/?ks=UserData&cf=Users&k=1
+
+
+Included is a client for node.js: node/jsondra.js
+If you copy this to your node.js project you can require it and use it as
+follows:
+
+var sys = require("sys"),
+   http = require("http"),
+   jsondra = require("./lib/jsondra");
+
+// application settings
+GLOBAL.settings = {
+    "test_string": "test",
+    "jsondra_connection": {"host": "localhost", "port": 8001}
+}
+
+// Creating the server
+var server = http.createServer(function (request, response) {
+    // Path routing
+    var paths = {
+        '/': mainHandler,
+        '/testjsondraget': testJsondraGet,
+        '/testjsondraput': testJsondraPut,
+        '/testjsondradel': testJsondraDel
+    };
+
+    paths[request.uri.path].apply(this, [request, response]);
+});
+
+var mainHandler = function(request, response) {
+  response.sendHeader(200, {"Content-Type": "text/plain"});
+  response.sendBody("Hello World\n");
+  response.sendBody(GLOBAL.settings["test_string"])
+  response.finish();
+};
+
+var testJsondraGet = function(request, response) {
+    var test = jsondra.get(ks="UserData", cf="Users", k="1", function(responseBody) {
+        response.sendHeader(200, {"Content-Type": "text/plain"});
+        response.sendBody(responseBody)
+        response.finish();
+    });
+};
+
+var testJsondraPut = function(request, response) {
+    var test = jsondra.put(ks="UserData", cf="Users", k="1", v={"name": "joe"}, function(responseBody) {
+        response.sendHeader(200, {"Content-Type": "text/plain"});
+        response.sendBody(responseBody)
+        response.finish();
+    });
+};
+
+
+var testJsondraDel = function(request, response) {
+    var test = jsondra.delete(ks="UserData", cf="Users", k="1", function(responseBody) {
+        response.sendHeader(200, {"Content-Type": "text/plain"});
+        response.sendBody(responseBody)
+        response.finish();
+    });
+};
+
+server.listen(8000)
+sys.puts("Server running at http://127.0.0.1:8000/");
