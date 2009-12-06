@@ -71,12 +71,17 @@ class JsondraRequestHandler(tornado.web.RequestHandler):
         # 500 error if anything missing.
         # TODO: add debug switch handling, if debug is on then spit out an
         # error for each missing item
+        print "body = '" + self.request.body + "'"
+        print "headers = " + str(self.request.headers)
+
         if None in (self.keyspace, self.columnfamily, self.key):
+            print self.request.body
             raise tornado.web.HTTPError(500, "Request must include a keyspace, columnfamily, and key.")
+
 
 class MainHandler(tornado.web.RequestHandler):
     def get(self):
-        self.write('Jsondra - The http/json interface to Cassandra')
+        self.write('Jsondra - The http/json interface to Cassandra.')
 
 
 class GetRecordHandler(JsondraRequestHandler):
