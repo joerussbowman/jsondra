@@ -38,10 +38,7 @@ define("debug", default=False, help="turn debugging on or off")
 class Application(tornado.web.Application):
     def __init__(self):
         handlers = [
-            (r"/", MainHandler),
-            (r"/record/get/?", GetRecordHandler),
-            (r"/record/put/?", PutRecordHandler),
-            (r"/record/delete/?", DeleteRecordHandler),
+            (r"/(.*?)/(.*?)/(.*?)/", RecordHandler),
         ]
         if type(options.cassandra_pool) is not "list":
             cassandra_pool = [options.cassandra_pool]
@@ -55,44 +52,19 @@ class Application(tornado.web.Application):
         )
         tornado.web.Application.__init__(self, handlers, **settings)
 
-class JsondraRequestHandler(tornado.web.RequestHandler):
-    """ Base class for Jsondra requests """
-    def _check_args(self):
-        # check for attributes. This makes it easier for anyone who wants to
-        # superclass this handler to create handlers with predefined keyspaces
-        # and/or column families
-        if not hasattr(self, 'keyspace'):
-            self.keyspace = self.get_argument("ks", None)
-        if not hasattr(self, 'columnfamily'):
-            self.columnfamily = self.get_argument("cf", None)
-        if not hasattr(self, 'key'):
-            self.key = self.get_argument("k", None)
+class RecordHandler(tornado.web.RequestHandler):
+    """ Validates correct arguments to build key is passed. """
+    def _initialize_key(self, keyspace, columnfamily, key):
+        if "" in (keyspace, columnfamily, key):
+            raise tornado.web.HTTPError(404, "missing key item")
+        connection.add_pool(keyspace, self.settings.get('cassandra_pool'))
+        return Key(keyspace, columnfamily, key)
 
-        # 500 error if anything missing.
-        # TODO: add debug switch handling, if debug is on then spit out an
-        # error for each missing item
-        print "body = '" + self.request.body + "'"
-        print "headers = " + str(self.request.headers)
-
-        if None in (self.keyspace, self.columnfamily, self.key):
-            print self.request.body
-            raise tornado.web.HTTPError(500, "Request must include a keyspace, columnfamily, and key.")
-
-
-class MainHandler(tornado.web.RequestHandler):
-    def get(self):
-        self.write('Jsondra - The http/json interface to Cassandra.')
-
-
-class GetRecordHandler(JsondraRequestHandler):
-    """ Handler used for getting records. Returns 404 on keys not found. """
-    def _process_request(self):
-        self._check_args()
-
-        connection.add_pool(self.keyspace, self.settings.get('cassandra_pool'))
-
-        k = Key(self.keyspace, self.columnfamily, self.key)
+    def get(self, keyspace, columnfamily, key):
+        """ HTTP GET request retrieves the key if it exists, otherwise 404 """
+        k = self._initialize_key(keyspace, columnfamily, key)
         r = record.Record()
+
         try:
             r.load(k)
             self.write(tornado.escape.json_encode(r))
@@ -100,20 +72,9 @@ class GetRecordHandler(JsondraRequestHandler):
             # key not found, throw 404
             raise tornado.web.HTTPError(404)
 
-    def get(self):
-        self._process_request()
-
-    def post(self):
-        self._process_request()
-
-class PutRecordHandler(JsondraRequestHandler):
-    """ Handler used for adding records. """
-    def _process_request(self):
-        self._check_args()
-        
-        connection.add_pool(self.keyspace, self.settings.get('cassandra_pool'))
-
-        k = Key(self.keyspace, self.columnfamily, self.key)
+    def post(self, keyspace, columnfamily, key):
+        """ HTTP POST will create or update the key. """
+        k = self._initialize_key(keyspace, columnfamily, key)
         r = record.Record()
 
         try:
@@ -141,31 +102,42 @@ class PutRecordHandler(JsondraRequestHandler):
             r.save()
             self.write(tornado.escape.json_encode(r))
 
-    def get(self):
-        self._process_request()
-
-    def post(self):
-        self._process_request()
-
-class DeleteRecordHandler(JsondraRequestHandler):
-    """ Handler used for deleting records. """
-    def _process_request(self):
-        self._check_args()
-        
-        k = Key(self.keyspace, self.columnfamily, self.key)
+    def delete(self, keyspace, columnfamily, key):
+        """ HTTP DELETE will delete the key """
+        k = self._initialize_key(keyspace, columnfamily, key)
         r = record.Record()
+
         try:
             r.load(k)
             r.remove()
             self.write('{"deleteItem": "success"}')
         except:
-            raise tornado.web.HTTPError(404, "key not found")
+            raise tornado.web.HTTPError(404)
 
-    def get(self):
-        self._process_request()
 
-    def post(self):
-        self._process_request()
+class JsondraRequestHandler(tornado.web.RequestHandler):
+    """ Base class for Jsondra requests """
+    def _check_args(self):
+        # check for attributes. This makes it easier for anyone who wants to
+        # superclass this handler to create handlers with predefined keyspaces
+        # and/or column families
+        if not hasattr(self, 'keyspace'):
+            self.keyspace = self.get_argument("ks", None)
+        if not hasattr(self, 'columnfamily'):
+            self.columnfamily = self.get_argument("cf", None)
+        if not hasattr(self, 'key'):
+            self.key = self.get_argument("k", None)
+
+        # 500 error if anything missing.
+        # TODO: add debug switch handling, if debug is on then spit out an
+        # error for each missing item
+        print "body = '" + self.request.body + "'"
+        print "headers = " + str(self.request.headers)
+
+        if None in (self.keyspace, self.columnfamily, self.key):
+            print self.request.body
+            raise tornado.web.HTTPError(500, "Request must include a keyspace, columnfamily, and key.")
+
 
 def main():
     tornado.options.parse_command_line()

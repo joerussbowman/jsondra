@@ -11,15 +11,19 @@ var sys = require("sys"),
 
 var Jsondra = new process.EventEmitter();
 
+// If the application has already configured the host and port use it, otherwise
+// defer to the settings in this file.
+if (GLOBAL.jsondra_connection == undefined) {
+    GLOBAL.jsondra_connection = {"host": "localhost", "port": 8001};
+}
+
 exports.get = function(ks, cf, k, callback) {
     var jsondra = http.createClient(GLOBAL.settings["jsondra_connection"]["port"], GLOBAL.settings["jsondra_connection"]["host"]);
-    data = "ks=" + escape(ks) + "&cf=" + escape(cf) + "&k=" + escape(k);
+    uri = "/" + escape(ks) + "/" + escape(cf) + "/" + escape(k) + "/";
     headers = {
-        "Content-Length": data.length,
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Length": 0
     }
-    var request = jsondra.post("/record/get/", headers);
-    request.sendBody(data);
+    var request = jsondra.get(uri, headers);
     request.finish(function(response){
         response.setBodyEncoding("utf8");
         var responseBody = "";
@@ -36,20 +40,18 @@ exports.get = function(ks, cf, k, callback) {
             else {
                 responseBody = {"Error": True}
             }
-            callback(JSON.stringify(responseBody));
+            callback(responseBody);
         });
     });
 };
 
 exports.del = function(ks, cf, k, callback) {
     var jsondra = http.createClient(GLOBAL.settings["jsondra_connection"]["port"], GLOBAL.settings["jsondra_connection"]["host"]);
-    data = "ks=" + escape(ks) + "&cf=" + escape(cf) + "&k=" + escape(k);
+    uri = "/" + escape(ks) + "/" + escape(cf) + "/" + escape(k) + "/";
     headers = {
-        "Content-Length": data.length,
-        "Content-Type": "application/x-www-form-urlencoded"
+        "Content-Length": 0,
     }
-    var request = jsondra.post("/record/delete/", headers);
-    request.sendBody(data);
+    var request = jsondra.del(uri, headers);
     request.finish(function(response){
         response.setBodyEncoding("utf8");
         var responseBody = "";
@@ -62,15 +64,16 @@ exports.del = function(ks, cf, k, callback) {
     });
 };
 
-exports.put = function(ks, cf, k, v, callback) {
+exports.post = function(ks, cf, k, v, callback) {
     var jsondra = http.createClient(GLOBAL.settings["jsondra_connection"]["port"], GLOBAL.settings["jsondra_connection"]["host"]);
     var val = JSON.stringify(v)
-    data = "ks=" + escape(ks) + "&cf=" + escape(cf) + "&k=" + escape(k) + "&v=" + escape(val);
+    uri = "/" + escape(ks) + "/" + escape(cf) + "/" + escape(k) + "/";
+    data = "v=" + escape(val);
     headers = {
         "Content-Length": data.length,
         "Content-Type": "application/x-www-form-urlencoded"
     }
-    var request = jsondra.post("/record/put/", headers);
+    var request = jsondra.post(uri, headers);
     request.sendBody(data);
     request.finish(function(response){
         response.setBodyEncoding("utf8");
