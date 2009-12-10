@@ -17,6 +17,15 @@ More functionality will come in the future.
 Items accessed by supplying the Key object via the url: ie:
     http://localhost:8001/keyspace/columnfamily/key/
 
+For post/put operations, if a key is not supplied, one will be created. For
+get/delete operations if a key is not supplied, or does not exist, a 404
+is returned.
+
+Delete items return a JSON object with a deletedItem object which has key object
+of the item deleted returned.
+
+All items, when written, get an extra key appended to them which is _jsondra_id.
+
 Responses from the server are either HTTP status codes, or JSON formatted
 values. Jsondra does not store raw JSON within Cassandra. It uses Tornado
 and Lazyboy to parse the JSON an store items as columns within Cassandra.
