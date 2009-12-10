@@ -17,6 +17,8 @@
 __author__="jbowman"
 __date__ ="$Dec 5, 2009 11:10:21 AM$"
 
+import logging
+
 import tornado.escape
 import tornado.httpserver
 import tornado.options
@@ -37,7 +39,8 @@ define("debug", default=False, help="turn debugging on or off")
 class Application(tornado.web.Application):
     def __init__(self):
         handlers = [
-            (r"/(.*?)/(.*?)/(.*?)/", RecordHandler),
+            (r"/(.*?)/(.*?)/(.*?)/", RecordHandler), # key
+            (r"/(.*?)/(.*?)/", RecordHandler), # no key
         ]
         if type(options.cassandra_pool) is not "list":
             cassandra_pool = [options.cassandra_pool]
@@ -51,13 +54,15 @@ class Application(tornado.web.Application):
 
 class RecordHandler(tornado.web.RequestHandler):
     """ Validates correct arguments to build key is passed. """
-    def _initialize_key(self, keyspace, columnfamily, key):
-        if "" in (keyspace, columnfamily, key):
-            raise tornado.web.HTTPError(404, "missing key item")
+    def _initialize_key(self, keyspace, columnfamily, key=None):
+        logging.info(str([keyspace, columnfamily, key]))
         connection.add_pool(keyspace, self.settings.get('cassandra_pool'))
-        return Key(keyspace, columnfamily, key)
+        try:
+            return Key(keyspace, columnfamily, key)
+        except:
+            raise tornado.web.HTTPError(500, "invalid url")
 
-    def get(self, keyspace, columnfamily, key):
+    def get(self, keyspace, columnfamily, key=None):
         """ HTTP GET request retrieves the key if it exists, otherwise 404 """
         k = self._initialize_key(keyspace, columnfamily, key)
         r = record.Record()
@@ -71,7 +76,7 @@ class RecordHandler(tornado.web.RequestHandler):
             # key not found, throw 404
             raise tornado.web.HTTPError(404)
 
-    def post(self, keyspace, columnfamily, key):
+    def post(self, keyspace, columnfamily, key=None):
         """ HTTP POST will create or update the key. """
         k = self._initialize_key(keyspace, columnfamily, key)
         r = record.Record()
@@ -98,7 +103,8 @@ class RecordHandler(tornado.web.RequestHandler):
             self.write(tornado.escape.json_encode(r))
         except:
             r.key = k
-            r["_jsondra_id"] = {"keyspace": keyspace, "columnfamily": columnfamily, "key": key}
+            r["_jsondra_id"] = {"keyspace": keyspace,
+                "columnfamily": columnfamily, "key": k.key}
             for i in v:
                 r[i] = v[i]
             r.save()
@@ -106,9 +112,9 @@ class RecordHandler(tornado.web.RequestHandler):
             self.set_header("Connection", "close")
             self.write(tornado.escape.json_encode(r))
 
-    def put(self, keyspace, columnfamily, key):
+    def put(self, keyspace, columnfamily, key=None):
         """ HTTP POST will create or update the key. """
-        k = self._initialize_key(keyspace, columnfamily, key)
+        k = self._initialize_key(keyspace, columnfamily)
         r = record.Record()
 
         try:
@@ -133,7 +139,8 @@ class RecordHandler(tornado.web.RequestHandler):
             self.write(tornado.escape.json_encode(r))
         except:
             r.key = k
-            r["_jsondra_id"] = {"keyspace": keyspace, "columnfamily": columnfamily, "key": key}
+            r["_jsondra_id"] = {"keyspace": keyspace,
+                "columnfamily": columnfamily, "key": k.key}
             for i in v:
                 r[i] = v[i]
             r.save()
@@ -142,7 +149,7 @@ class RecordHandler(tornado.web.RequestHandler):
             self.write(tornado.escape.json_encode(r))
 
 
-    def delete(self, keyspace, columnfamily, key):
+    def delete(self, keyspace, columnfamily, key=None):
         """ HTTP DELETE will delete the key """
         k = self._initialize_key(keyspace, columnfamily, key)
         r = record.Record()
