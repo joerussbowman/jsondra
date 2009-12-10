@@ -15,9 +15,12 @@ if (GLOBAL.jsondra_connection == undefined) {
     GLOBAL.jsondra_connection = {"host": "localhost", "port": 8001};
 }
 
-var get = function(ks, cf, k, callback) {
+var get = function(key, callback) {
     var jsondra = http.createClient(GLOBAL.settings["jsondra_connection"]["port"], GLOBAL.settings["jsondra_connection"]["host"]);
-    uri = "/" + escape(ks) + "/" + escape(cf) + "/" + escape(k) + "/";
+    uri = "/" + key["keyspace"] + "/" + key["columnfamily"] + "/"
+    if (key["key"]) {
+        uri += key["key"] + "/"
+    }
     headers = {
         "Content-Length": 0
     }
@@ -35,16 +38,19 @@ var get = function(ks, cf, k, callback) {
                 responseBody = JSON.stringify(null)
             }
             else {
-                responseBody = {"Error": True}
+                responseBody = JSON.stringify({"error": "Invalid Jsondra status code: " + response.statusCode})
             }
             callback(responseBody);
         });
     });
 };
 
-var del = function(ks, cf, k, callback) {
+var del = function(key, callback) {
     var jsondra = http.createClient(GLOBAL.settings["jsondra_connection"]["port"], GLOBAL.settings["jsondra_connection"]["host"]);
-    uri = "/" + escape(ks) + "/" + escape(cf) + "/" + escape(k) + "/";
+    uri = "/" + key["keyspace"] + "/" + key["columnfamily"] + "/"
+    if (key["key"]) {
+        uri += key["key"] + "/"
+    }
     headers = {
         "Content-Length": 0
     }
@@ -56,15 +62,26 @@ var del = function(ks, cf, k, callback) {
             responseBody += chunk;
         });
         response.addListener("complete", function() {
+            if (response.statusCode == 200) {
+            }
+            else if (response.statusCode == 404) {
+                responseBody = JSON.stringify(false)
+            }
+            else {
+                responseBody = JSON.stringify({"error": "Invalid Jsondra status code: " + response.statusCode})
+            }
             callback(responseBody);
         });
     });
 };
 
-var post = function(ks, cf, k, v, callback) {
+var _add_record = function(key, value, callback) {
     var jsondra = http.createClient(GLOBAL.settings["jsondra_connection"]["port"], GLOBAL.settings["jsondra_connection"]["host"]);
-    var val = JSON.stringify(v)
-    uri = "/" + escape(ks) + "/" + escape(cf) + "/" + escape(k) + "/";
+    var val = JSON.stringify(value)
+    uri = "/" + key["keyspace"] + "/" + key["columnfamily"] + "/"
+    if (key["key"]) {
+        uri += key["key"] + "/"
+    }
     data = "v=" + escape(val);
     headers = {
         "Content-Length": data.length,
@@ -79,33 +96,19 @@ var post = function(ks, cf, k, v, callback) {
             responseBody += chunk;
         });
         response.addListener("complete", function() {
+            if (response.statusCode == 200) {
+            }
+            else {
+                responseBody = JSON.stringify({"error": "Invalid Jsondra status code: " + response.statusCode})
+            }
             callback(responseBody);
         });
     });
 };
 
-var put = function(ks, cf, k, v, callback) {
-    var jsondra = http.createClient(GLOBAL.settings["jsondra_connection"]["port"], GLOBAL.settings["jsondra_connection"]["host"]);
-    var val = JSON.stringify(v)
-    uri = "/" + escape(ks) + "/" + escape(cf) + "/" + escape(k) + "/";
-    data = "v=" + escape(val);
-    headers = {
-        "Content-Length": data.length,
-        "Content-Type": "application/x-www-form-urlencoded"
-    }
-    var request = jsondra.put(uri, headers);
-    request.sendBody(data);
-    request.finish(function(response){
-        response.setBodyEncoding("utf8");
-        var responseBody = "";
-        response.addListener("body", function (chunk) {
-            responseBody += chunk;
-        });
-        response.addListener("complete", function() {
-            callback(responseBody);
-        });
-    });
-};
+var post = _add_record;
+
+var put = _add_record;
 
 exports.get = get
 exports.del = del
