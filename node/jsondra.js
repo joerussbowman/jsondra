@@ -106,11 +106,7 @@ var _add_record = function(key, value, callback) {
     });
 };
 
-var post = _add_record;
-
-var put = _add_record;
-
 exports.get = get
 exports.del = del
-exports.post = post
-exports.put = put
+exports.post = _add_record
+exports.put = _add_record
