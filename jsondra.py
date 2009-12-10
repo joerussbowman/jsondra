@@ -45,7 +45,7 @@ class Application(tornado.web.Application):
             cassandra_pool = options.cassandra_pool
         settings = dict(
             cassandra_pool=cassandra_pool,
-            debug=True,
+            debug=False,
         )
         tornado.web.Application.__init__(self, handlers, **settings)
 
@@ -167,9 +167,9 @@ def main():
     # cassandra
     # http server
     http_server = tornado.httpserver.HTTPServer(Application())
-    http_server.listen(options.port)
+    http_server.bind(options.port)
+    http_server.start()
     tornado.ioloop.IOLoop.instance().start()
-
 
 if __name__ == "__main__":
     main()
