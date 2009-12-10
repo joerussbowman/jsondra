@@ -67,6 +67,8 @@ class RecordHandler(tornado.web.RequestHandler):
 
         try:
             r.load(k)
+            self.set_header("Content-Type", "application/json")
+            self.set_header("Connection", "close")
             self.write(tornado.escape.json_encode(r))
         except:
             # key not found, throw 404
@@ -94,12 +96,17 @@ class RecordHandler(tornado.web.RequestHandler):
 
             r.save()
             # return what r is now, so application can confirm
+            self.set_header("Content-Type", "application/json")
+            self.set_header("Connection", "close")
             self.write(tornado.escape.json_encode(r))
         except:
             r.key = k
+            r["_jsondra_id"] = {"keyspace": keyspace, "columnfamily": columnfamily, "key": key}
             for i in v:
                 r[i] = v[i]
             r.save()
+            self.set_header("Content-Type", "application/json")
+            self.set_header("Connection", "close")
             self.write(tornado.escape.json_encode(r))
 
     def delete(self, keyspace, columnfamily, key):
@@ -110,34 +117,17 @@ class RecordHandler(tornado.web.RequestHandler):
         try:
             r.load(k)
             r.remove()
-            self.write('{"deleteItem": "success"}')
+            self.set_header("Content-Type", "application/json")
+            self.set_header("Connection", "close")
+
+            self.write(tornado.escape.json_encode({
+                "deletedItem": {
+                    "keyspace": keyspace,
+                    "columnfamily": columnfamily,
+                    "key": key
+                }}))
         except:
             raise tornado.web.HTTPError(404)
-
-
-class JsondraRequestHandler(tornado.web.RequestHandler):
-    """ Base class for Jsondra requests """
-    def _check_args(self):
-        # check for attributes. This makes it easier for anyone who wants to
-        # superclass this handler to create handlers with predefined keyspaces
-        # and/or column families
-        if not hasattr(self, 'keyspace'):
-            self.keyspace = self.get_argument("ks", None)
-        if not hasattr(self, 'columnfamily'):
-            self.columnfamily = self.get_argument("cf", None)
-        if not hasattr(self, 'key'):
-            self.key = self.get_argument("k", None)
-
-        # 500 error if anything missing.
-        # TODO: add debug switch handling, if debug is on then spit out an
-        # error for each missing item
-        print "body = '" + self.request.body + "'"
-        print "headers = " + str(self.request.headers)
-
-        if None in (self.keyspace, self.columnfamily, self.key):
-            print self.request.body
-            raise tornado.web.HTTPError(500, "Request must include a keyspace, columnfamily, and key.")
-
 
 def main():
     tornado.options.parse_command_line()
