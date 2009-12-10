@@ -106,6 +106,42 @@ class RecordHandler(tornado.web.RequestHandler):
             self.set_header("Connection", "close")
             self.write(tornado.escape.json_encode(r))
 
+    def put(self, keyspace, columnfamily, key):
+        """ HTTP POST will create or update the key. """
+        k = self._initialize_key(keyspace, columnfamily, key)
+        r = record.Record()
+
+        try:
+            v = tornado.escape.json_decode(self.get_argument("v"))
+        except:
+            raise tornado.web.HTTPError(500, "missing or invalid value")
+
+        # wrapped in try in order to catch and modify existing keys
+        try:
+            r.load(k)
+            # delete any items removed
+            for i in r:
+                if not i in v:
+                    del r[v]
+            for i in v:
+                r[i] = v[i]
+
+            r.save()
+            # return what r is now, so application can confirm
+            self.set_header("Content-Type", "application/json")
+            self.set_header("Connection", "close")
+            self.write(tornado.escape.json_encode(r))
+        except:
+            r.key = k
+            r["_jsondra_id"] = {"keyspace": keyspace, "columnfamily": columnfamily, "key": key}
+            for i in v:
+                r[i] = v[i]
+            r.save()
+            self.set_header("Content-Type", "application/json")
+            self.set_header("Connection", "close")
+            self.write(tornado.escape.json_encode(r))
+
+
     def delete(self, keyspace, columnfamily, key):
         """ HTTP DELETE will delete the key """
         k = self._initialize_key(keyspace, columnfamily, key)
