@@ -1,19 +1,24 @@
 # -*- coding: utf-8 -*-
 #
-# A new Python file
-#
 # © 2009 Digg, Inc. All rights reserved.
 # Author: Ian Eure <ian@digg.com>
 #
 
-from lazyboy.exceptions import ErrorUnknownKeyspace, ErrorIncompleteKey
+"""Lazyboy: Base class for access to Cassandra."""
+
+from cassandra.ttypes import ConsistencyLevel
+
+from lazyboy.exceptions import ErrorIncompleteKey
 import lazyboy.connection as connection
 
+
 class CassandraBase(object):
+
     """The base class for all Cassandra-accessing objects."""
 
     def __init__(self):
         self._clients = {}
+        self.consistency = ConsistencyLevel.ONE
 
     def _get_cas(self, keyspace=None):
         """Return the cassandra client."""
@@ -25,4 +30,3 @@ class CassandraBase(object):
             self._clients[keyspace] = connection.get_pool(keyspace)
 
         return self._clients[keyspace]
-

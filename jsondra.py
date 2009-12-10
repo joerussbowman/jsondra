@@ -17,7 +17,6 @@
 __author__="jbowman"
 __date__ ="$Dec 5, 2009 11:10:21 AM$"
 
-import os.path
 import tornado.escape
 import tornado.httpserver
 import tornado.options
@@ -45,8 +44,6 @@ class Application(tornado.web.Application):
         else:
             cassandra_pool = options.cassandra_pool
         settings = dict(
-            template_path=os.path.join(os.path.dirname(__file__), "templates"),
-            static_path=os.path.join(os.path.dirname(__file__), "static"),
             cassandra_pool=cassandra_pool,
             debug=True,
         )

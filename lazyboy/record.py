@@ -6,21 +6,35 @@
 """Lazyboy: Record."""
 
 import time
+import copy
 from itertools import ifilterfalse as filternot
 
-from cassandra.ttypes import Column, SuperColumn, ColumnOrSuperColumn, \
-    SlicePredicate, SliceRange, ConsistencyLevel
+from cassandra.ttypes import Column, SuperColumn
 
 from lazyboy.base import CassandraBase
 from lazyboy.key import Key
-from lazyboy.exceptions import ErrorMissingField, ErrorNoSuchRecord, \
-    ErrorMissingKey, ErrorInvalidValue
+import lazyboy.iterators as iterators
+import lazyboy.exceptions as exc
 
 
 class Record(CassandraBase, dict):
+
     """An object backed by a record in Cassandra."""
+
     # A tuple of items which must be present for the object to be valid
     _required = ()
+
+    # The keyspace this record should be saved in
+    _keyspace = None
+
+    # The column family this record should be saved in
+    _column_family = None
+
+    # Indexes which this record should be added to on save
+    _indexes = []
+
+    # Denormalized copies of this record
+    _mirrors = []
 
     def __init__(self, *args, **kwargs):
         dict.__init__(self)
@@ -30,6 +44,34 @@ class Record(CassandraBase, dict):
 
         if args or kwargs:
             self.update(*args, **kwargs)
+
+    def make_key(self, key=None, super_column=None, **kwargs):
+        """Return a new key."""
+        args = {'keyspace': self._keyspace,
+                'column_family': self._column_family,
+                'key': key,
+                'super_column': super_column}
+        args.update(**kwargs)
+        return Key(**args)
+
+    def default_key(self):
+        """Return a default key for this record."""
+        raise exc.ErrorMissingKey("There is no key set for this record.")
+
+    def set_key(self, key, super_column=None):
+        """Set the key for this record."""
+        self.key = self.make_key(key=key, super_column=super_column)
+        return self
+
+    def get_indexes(self):
+        """Return indexes this record should be stored in."""
+        return [index() if isinstance(index, type) else index
+                for index in self._indexes]
+
+    def get_mirrors(self):
+        """Return mirrors this record should be stored in."""
+        return [mirror if isinstance(mirror, type) else mirror
+                for mirror in self._mirrors]
 
     def valid(self):
         """Return a boolean indicating whether the record is valid."""
@@ -54,12 +96,16 @@ class Record(CassandraBase, dict):
         """Update the object as with dict.update. Returns None."""
         if arg:
             if hasattr(arg, 'keys'):
-                for key in arg: self[key] = arg[key]
+                for key in arg:
+                    self[key] = arg[key]
             else:
-                for key, val in arg: self[key] = val
+                for (key, val) in arg:
+                    self[key] = val
 
         if kwargs:
-            for key in kwargs: self[key] = kwargs[key]
+            for key in kwargs:
+                self[key] = kwargs[key]
+        return self
 
     def sanitize(self, value):
         """Return a value appropriate for sending to Cassandra."""
@@ -78,9 +124,10 @@ class Record(CassandraBase, dict):
     def __setitem__(self, item, value):
         """Set an item, storing it into the _columns backing store."""
         if value is None:
-            raise ErrorInvalidValue("You may not set an item to None.")
+            raise exc.ErrorInvalidValue("You may not set an item to None.")
 
         value = self.sanitize(value)
+
         # If this doesn't change anything, don't record it
         _orig = self._original.get(item)
         if _orig and _orig.value == value:
@@ -103,14 +150,15 @@ class Record(CassandraBase, dict):
         dict.__delitem__(self, item)
         # Don't record this as a deletion if it wouldn't require a remove()
         self._deleted[item] = item in self._original
-        if item in self._modified: del self._modified[item]
+        if item in self._modified:
+            del self._modified[item]
         del self._columns[item]
 
     def _inject(self, key, columns):
         """Inject columns into the record after they have been fetched.."""
         self.key = key
-        if isinstance(columns, list):
-            columns = dict((col.name, col) for col in columns)
+        if not isinstance(columns, dict):
+            columns = dict((col.name, col) for col in iter(columns))
 
         self._original = columns
         self.revert()
@@ -123,72 +171,87 @@ class Record(CassandraBase, dict):
                 'changed': tuple(self._columns[key]
                                  for key in self._modified.keys())}
 
-    def load(self, key):
+    def load(self, key, consistency=None):
         """Load this record from primary key"""
-        assert isinstance(key, Key), "Bad key passed to load()"
+        if not isinstance(key, Key):
+            key = self.make_key(key)
+
         self._clean()
+        consistency = consistency or self.consistency
 
-        _slice = self._get_cas(key.keyspace).get_slice(
-            key.keyspace, key.key, key,
-            SlicePredicate(slice_range=SliceRange(start="", finish="")),
-            ConsistencyLevel.ONE)
+        columns = iterators.slice_iterator(key, consistency)
 
-        if not _slice:
-            raise ErrorNoSuchRecord("No record matching key %s" % key)
-
-        self._inject(key,
-                     dict([(obj.column.name, obj.column) for obj in _slice]))
+        self._inject(key, dict([(column.name, column) for column in columns]))
         return self
 
-    def save(self):
+    def save(self, consistency=None):
         """Save the record, returns self."""
         if not self.valid():
-            raise ErrorMissingField("Missing required field(s):",
-                                    self.missing())
+            raise exc.ErrorMissingField("Missing required field(s):",
+                                        self.missing())
 
         if not hasattr(self, 'key') or not self.key:
-            raise ErrorMissingKey("No key has been set.")
+            self.key = self.default_key()
 
         assert isinstance(self.key, Key), "Bad record key in save()"
 
-        client = self._get_cas()
+        # Marshal and save changes
+        changes = self._marshal()
+        self._save_internal(self.key, changes, consistency)
 
-        # Marshal changes
-        (deleted, changed) = self._marshal().values()
-
-        # Delete items
-
-        for path in deleted:
-            client.remove(self.key.keyspace, self.key.key, path,
-                          self.timestamp(), ConsistencyLevel.ONE)
-        self._deleted.clear()
-
-        # Update items
-        if changed:
-            client.batch_insert(*self._get_batch_args(self.key, changed))
-            self._modified.clear()
-        self._original = self._columns.copy()
+        try:
+            try:
+                # Save mirrors
+                for mirror in self.get_mirrors():
+                    self._save_internal(mirror.mirror_key(self), changes,
+                                        consistency)
+            finally:
+                # Update indexes
+                for index in self.get_indexes():
+                    index.append(self)
+        finally:
+            # Clean up internal state
+            if changes['changed']:
+                self._modified.clear()
+            self._original = copy.deepcopy(self._columns)
 
         return self
 
-    def _get_batch_args(self, key, columns):
+    def _save_internal(self, key, changes, consistency=None):
+        """Internal save method."""
+
+        consistency = consistency or self.consistency
+        client = self._get_cas(key.keyspace)
+        # Delete items
+        for path in changes['deleted']:
+            client.remove(key.keyspace, key.key, path,
+                          self.timestamp(), consistency)
+        self._deleted.clear()
+
+        # Update items
+        if changes['changed']:
+            client.batch_insert(*self._get_batch_args(
+                    key, changes['changed'], consistency))
+
+    def _get_batch_args(self, key, columns, consistency=None):
         """Return a BatchMutation for the given key and columns."""
-        cfmap = {}
-        if not key.is_super():
-            cols = [ColumnOrSuperColumn(column=col) for col in columns]
-        else:
-            scol = SuperColumn(name=key.super_column,
-                               columns=columns)
-            cols = [ColumnOrSuperColumn(super_column=scol)]
+        consistency = consistency or self.consistency
 
-        return (key.keyspace, key.key, {key.column_family: cols},
-                ConsistencyLevel.ONE)
+        if key.is_super():
+            columns = [SuperColumn(name=key.super_column, columns=columns)]
 
-    def remove(self):
+        return (key.keyspace, key.key,
+                {key.column_family: tuple(iterators.pack(columns))},
+                consistency)
+
+    def remove(self, consistency=None):
         """Remove this record from Cassandra."""
+        consistency = consistency or self.consistency
         self._get_cas().remove(self.key.keyspace, self.key.key,
                                self.key.get_path(), self.timestamp(),
-                               ConsistencyLevel.ONE)
+                               consistency)
+        self._clean()
+        return self
 
     def revert(self):
         """Revert changes, restoring to the state we were in when loaded."""
@@ -197,3 +260,17 @@ class Record(CassandraBase, dict):
             self._columns[col.name] = col
 
         self._modified, self._deleted = {}, {}
+
+
+class MirroredRecord(Record):
+
+    """A mirrored (denormalized) record."""
+
+    def mirror_key(self, parent_record):
+        """Return the key this mirror should be saved into."""
+        assert isinstance(parent_record, Record)
+        raise exc.ErrorMissingKey("Please implement a mirror_key method.")
+
+    def save(self):
+        """Refuse to save this record."""
+        raise exc.ErrorImmutable("Mirrored records are immutable.")
