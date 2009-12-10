@@ -17,8 +17,6 @@
 __author__="jbowman"
 __date__ ="$Dec 5, 2009 11:10:21 AM$"
 
-import logging
-
 import tornado.escape
 import tornado.httpserver
 import tornado.options
@@ -55,12 +53,11 @@ class Application(tornado.web.Application):
 class RecordHandler(tornado.web.RequestHandler):
     """ Validates correct arguments to build key is passed. """
     def _initialize_key(self, keyspace, columnfamily, key=None):
-        logging.info(str([keyspace, columnfamily, key]))
         connection.add_pool(keyspace, self.settings.get('cassandra_pool'))
         try:
             return Key(keyspace, columnfamily, key)
         except:
-            raise tornado.web.HTTPError(500, "invalid url")
+            raise tornado.web.HTTPError(404)
 
     def get(self, keyspace, columnfamily, key=None):
         """ HTTP GET request retrieves the key if it exists, otherwise 404 """

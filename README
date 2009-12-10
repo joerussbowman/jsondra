@@ -1,91 +1,26 @@
 Jsondra is an http and json interface for the Cassandra project.
 
-It is written in python using the tornado framework released by Facebook,
-and uses the lazyboy project as released by Digg for interacting with Cassandra.
+It is written in python using the Tornado framework released by Facebook,
+and uses the Lazyboy project as released by Digg for interacting with Cassandra.
 
-The 3 URI's to access it are
+Jsondra uses HTTP verbage to interact with Cassandra.
 
-http://[host][port]/record/get/
-http://[host][port]/record/put/
-http://[host][port]/record/delete/
+HTTP GET will get an item.
+HTTP POST/PUT will store an item.
+HTTP DELETE will delete an item.
 
-It expects the following arguments via GET or POST
+Currently, Jsondra only supports basic get/put(or post)/delete operations. You
+can create an item, access an item by it's key, or delete an item by it's key.
 
-ks = keyspace
-cf = column family
-k = key
-v (optional) = value for put operation
+More functionality will come in the future.
 
-Usage example:
+Items accessed by supplying the Key object via the url: ie:
+    http://localhost:8001/keyspace/columnfamily/key/
 
-Adding an item with a GET request:
-    http://localhost:8001/record/put/?ks=UserData&cf=Users&k=1&v={"name": "joe"}
+Responses from the server are either HTTP status codes, or JSON formatted
+values. Jsondra does not store raw JSON within Cassandra. It uses Tornado
+and Lazyboy to parse the JSON an store items as columns within Cassandra.
 
-Getting an item with a GET request:
-    http://localhost:8001/record/get/?ks=UserData&cf=Users&k=1
+Included is a sample client written using node.js. It's still very much a work
+in progress.
 
-Deleting an item with a GET request:
-    http://localhost:8001/record/delete/?ks=UserData&cf=Users&k=1
-
-
-Included is a client for node.js: node/jsondra.js
-If you copy this to your node.js project you can require it and use it as
-follows:
-
-var sys = require("sys"),
-   http = require("http"),
-   jsondra = require("./lib/jsondra");
-
-// application settings
-GLOBAL.settings = {
-    "test_string": "test",
-    "jsondra_connection": {"host": "localhost", "port": 8001}
-}
-
-// Creating the server
-var server = http.createServer(function (request, response) {
-    // Path routing
-    var paths = {
-        '/': mainHandler,
-        '/testjsondraget': testJsondraGet,
-        '/testjsondraput': testJsondraPut,
-        '/testjsondradel': testJsondraDel
-    };
-
-    paths[request.uri.path].apply(this, [request, response]);
-});
-
-var mainHandler = function(request, response) {
-  response.sendHeader(200, {"Content-Type": "text/plain"});
-  response.sendBody("Hello World\n");
-  response.sendBody(GLOBAL.settings["test_string"])
-  response.finish();
-};
-
-var testJsondraGet = function(request, response) {
-    var test = jsondra.get(ks="UserData", cf="Users", k="1", function(responseBody) {
-        response.sendHeader(200, {"Content-Type": "text/plain"});
-        response.sendBody(responseBody)
-        response.finish();
-    });
-};
-
-var testJsondraPut = function(request, response) {
-    var test = jsondra.put(ks="UserData", cf="Users", k="1", v={"name": "joe"}, function(responseBody) {
-        response.sendHeader(200, {"Content-Type": "text/plain"});
-        response.sendBody(responseBody)
-        response.finish();
-    });
-};
-
-
-var testJsondraDel = function(request, response) {
-    var test = jsondra.delete(ks="UserData", cf="Users", k="1", function(responseBody) {
-        response.sendHeader(200, {"Content-Type": "text/plain"});
-        response.sendBody(responseBody)
-        response.finish();
-    });
-};
-
-server.listen(8000)
-sys.puts("Server running at http://127.0.0.1:8000/");
