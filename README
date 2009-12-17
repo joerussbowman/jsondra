@@ -1,3 +1,6 @@
+Currently - Jsondra is an idea... READ MORE HERE
+http://wiki.github.com/joerussbowman/jsondra/what-is-jsondra
+
 Jsondra is an http and json interface for the Cassandra project.
 
 It is written in python using the Tornado framework released by Facebook,
